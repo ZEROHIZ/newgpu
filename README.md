@@ -12,17 +12,26 @@ GPUREDIS 是一个轻量级、高性能的分布式 GPU 任务调度系统，基
 
 ## 快速开始
 
-### 1. 使用 Docker 一键部署 (推荐)
+### 1. 使用 Docker 镜像直接部署 (推荐)
 
-系统内置了 Redis 和所有依赖，只需运行以下命令：
+您可以直接拉取我在 GitHub Packages 构建好的镜像进行部署：
 
 ```bash
-docker-compose up -d
+# 1. 拉取镜像
+docker pull ghcr.io/zerohiz/newgpu:latest
+
+# 2. 运行容器 (映射 8000 端口，并挂载数据目录)
+docker run -d \
+  --name gpu-redis \
+  -p 8000:8000 \
+  -v $(pwd)/data:/app/data \
+  --restart always \
+  ghcr.io/zerohiz/newgpu:latest
 ```
 
-访问 `http://localhost:8000` 即可进入管理后台。
+访问 `http://服务器IP:8000` 即可进入管理后台。
 
-### 2. 本地开发部署
+### 2. 使用 Docker Compose 一键部署
 
 1. **安装依赖**：
    ```bash
