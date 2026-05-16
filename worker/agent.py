@@ -48,17 +48,33 @@ class GPUAgent:
         task_data["gpu_id"] = self.gpu_id
         await redis_manager.set_json(f"task:{task_id}", task_data, ex=3600)
 
+        temp_file = None
         try:
             # 2. 转发请求到上游服务 (支持 JSON 或文件上传)
             async with httpx.AsyncClient(timeout=600.0) as client:
                 payload = task_data.get("payload", {})
                 file_path = payload.get("file_path")
                 
-                print(f"[{self.agent_id}] 调试: 收到文件路径='{file_path}', 是否存在={os.path.exists(file_path) if file_path else 'N/A'}")
+                # --- 【新增】远程文件下载逻辑 ---
+                if file_path and (file_path.startswith("http://") or file_path.startswith("https://")):
+                    temp_dir = "data/temp"
+                    os.makedirs(temp_dir, exist_ok=True)
+                    temp_file = os.path.join(temp_dir, f"dl_{task_id}_{os.path.basename(file_path)}")
+                    print(f"[{self.agent_id}] 🌐 正在从 URL 下载文件: {file_path} -> {temp_file}")
+                    # 使用当前 client 下载
+                    dl_resp = await client.get(file_path)
+                    if dl_resp.status_code == 200:
+                        with open(temp_file, "wb") as f:
+                            f.write(dl_resp.content)
+                        file_path = temp_file # 更新为本地临时路径
+                    else:
+                        print(f"[{self.agent_id}] ❌ 下载远程文件失败: {dl_resp.status_code}")
+                
+                print(f"[{self.agent_id}] 调试: 处理文件路径='{file_path}', 是否存在={os.path.exists(file_path) if file_path else 'N/A'}")
                 
                 # 特殊处理：如果是文件任务且本地存在该文件
                 if file_path and os.path.exists(file_path):
-                    print(f"[{self.agent_id}] 📎 发现本地文件，正在准备上传流: {file_path}")
+                    print(f"[{self.agent_id}] 📎 正在上传流到服务: {file_path}")
                     with open(file_path, "rb") as f:
                         # 构造 Multipart 上传
                         files = {"file": (os.path.basename(file_path), f)}
@@ -82,6 +98,13 @@ class GPUAgent:
             error_msg = f"请求转发异常: {str(e)}"
             task_data["error"] = error_msg
             print(f"[{self.agent_id}] ❌ 任务 {task_id} 转发异常: {error_msg}")
+        finally:
+            # 清理临时文件
+            if temp_file and os.path.exists(temp_file):
+                try:
+                    os.remove(temp_file)
+                    print(f"[{self.agent_id}] 🧹 已清理临时文件: {temp_file}")
+                except: pass
 
         # 3. 回写最终结果
         task_data["end_time"] = time.time()

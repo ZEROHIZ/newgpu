@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, UploadFile, File
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
@@ -9,6 +9,7 @@ import uuid
 import os
 import asyncio
 import sys
+import shutil
 
 # 确保可以从父目录导入 worker
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -18,10 +19,12 @@ from core.persistence import get_all_gpus, save_gpus, get_all_channels, save_cha
 app = FastAPI(title="GPUREDIS API Gateway")
 templates = Jinja2Templates(directory="web/templates")
 
-# 确保静态文件目录存在，防止 FastAPI 报错
-if not os.path.exists("web/static"):
-    os.makedirs("web/static")
+# 确保静态文件目录存在
+os.makedirs("web/static", exist_ok=True)
+os.makedirs("data/uploads", exist_ok=True)
+
 app.mount("/static", StaticFiles(directory="web/static"), name="static")
+app.mount("/uploads", StaticFiles(directory="data/uploads"), name="uploads")
 
 # ========== 数据模型 ==========
 
@@ -172,6 +175,23 @@ async def sync_agent():
     # 设置一个同步信号，有效期 10 秒
     await redis_manager.client.set("signal:sync_agent", "1", ex=10)
     return {"ok": True}
+
+@app.post("/api/upload")
+async def upload_file(file: UploadFile = File(...)):
+    # 生成唯一文件名
+    ext = os.path.splitext(file.filename)[1]
+    filename = f"{uuid.uuid4()}{ext}"
+    save_path = os.path.join("data", "uploads", filename)
+    
+    with open(save_path, "wb") as buffer:
+        shutil.copyfileobj(file.file, buffer)
+    
+    # 返回文件的相对访问路径
+    return {
+        "filename": file.filename,
+        "url": f"/uploads/{filename}",
+        "full_path": os.path.abspath(save_path)
+    }
 
 # ========== 系统状态 ==========
 
