@@ -1,0 +1,589 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GPUREDIS 控制面板</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .glass { background: rgba(255,255,255,0.75); backdrop-filter: blur(12px); border: 1px solid rgba(255,255,255,0.25); }
+        body { background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #0f172a 100%); min-height: 100vh; }
+        .modal-overlay { background: rgba(0,0,0,0.5); backdrop-filter: blur(4px); }
+        .card-hover:hover { transform: translateY(-2px); box-shadow: 0 8px 25px rgba(0,0,0,0.15); }
+        .card-hover { transition: all 0.2s ease; }
+    </style>
+</head>
+<body class="p-4 md:p-8 text-gray-200">
+    <div class="max-w-7xl mx-auto">
+        <!-- Header -->
+        <div class="flex justify-between items-center mb-8">
+            <h1 class="text-3xl font-bold text-white"><i class="fas fa-microchip mr-2 text-indigo-400"></i>GPUREDIS</h1>
+            <div id="conn-status" class="px-4 py-1.5 rounded-full text-sm font-medium"></div>
+        </div>
+
+        <!-- GPU 设备管理 -->
+        <div class="mb-8">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-xl font-bold text-white"><i class="fas fa-server mr-2 text-green-400"></i>显卡设备</h2>
+                <button onclick="openGpuModal()" class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition text-sm font-medium">
+                    <i class="fas fa-plus mr-1"></i>添加显卡
+                </button>
+            </div>
+            <div id="gpu-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div class="text-gray-500 text-center py-8">加载中...</div>
+            </div>
+        </div>
+
+        <!-- 渠道管理 -->
+        <div class="mb-8">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-xl font-bold text-white"><i class="fas fa-plug mr-2 text-indigo-400"></i>渠道配置</h2>
+                <button onclick="openChannelModal()" class="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 transition text-sm font-medium">
+                    <i class="fas fa-plus mr-1"></i>添加渠道
+                </button>
+            </div>
+            <div id="channel-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div class="text-gray-500 text-center py-8">加载中...</div>
+            </div>
+        </div>
+
+        <!-- 任务面板 -->
+        <div class="mb-8">
+            <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+                <div class="flex bg-slate-800/50 p-1 rounded-xl border border-slate-700">
+                    <button onclick="switchTab('active')" id="tab-active" class="px-6 py-2 rounded-lg text-sm font-bold transition-all bg-indigo-600 text-white shadow-lg">
+                        <i class="fas fa-bolt mr-2"></i>活跃任务
+                    </button>
+                    <button onclick="switchTab('history')" id="tab-history" class="px-6 py-2 rounded-lg text-sm font-bold transition-all text-gray-400 hover:text-white">
+                        <i class="fas fa-history mr-2"></i>历史记录
+                    </button>
+                </div>
+                <div class="flex gap-2">
+                    <button id="btn-clear-history" onclick="clearHistory()" class="px-4 py-2 bg-red-900/50 text-red-300 border border-red-500/30 rounded-lg hover:bg-red-800 transition text-sm font-medium hidden">
+                        <i class="fas fa-eraser mr-1"></i>清空历史
+                    </button>
+                    <button onclick="loadQueue()" class="px-4 py-2 bg-slate-700 text-white rounded-lg hover:bg-slate-600 transition text-sm font-medium">
+                        <i class="fas fa-sync-alt mr-1"></i>刷新状态
+                    </button>
+                </div>
+            </div>
+            
+            <div id="queue-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div class="col-span-3 text-center text-gray-500 py-12 glass rounded-2xl">加载中...</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 结果详情模态框 -->
+    <div id="result-modal" class="fixed inset-0 modal-overlay z-[60] flex items-center justify-center hidden">
+        <div class="bg-slate-800 rounded-2xl p-6 w-full max-w-2xl max-h-[80vh] overflow-y-auto shadow-2xl border border-slate-700">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-lg font-bold text-white"><i class="fas fa-file-alt mr-2 text-indigo-400"></i>任务结果</h3>
+                <button onclick="closeResultModal()" class="text-gray-400 hover:text-white"><i class="fas fa-times"></i></button>
+            </div>
+            <pre id="result-content" class="bg-slate-900 p-4 rounded-xl text-indigo-300 text-sm font-mono overflow-x-auto"></pre>
+        </div>
+    </div>
+
+
+    <!-- 添加显卡弹窗 -->
+    <div id="gpu-modal" class="fixed inset-0 modal-overlay z-50 flex items-center justify-center hidden">
+        <div class="bg-slate-800 rounded-2xl p-6 w-full max-w-md shadow-2xl border border-slate-700">
+            <h3 class="text-lg font-bold text-white mb-4"><i class="fas fa-server mr-2 text-green-400"></i>添加显卡</h3>
+            <form id="gpu-form" class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-300 mb-1">显卡名称</label>
+                    <input type="text" id="gpu-name" placeholder="如：RTX 4090" required
+                        class="w-full p-2.5 rounded-lg bg-slate-700 border border-slate-600 text-white placeholder-gray-400 focus:ring-2 focus:ring-green-500 focus:border-transparent">
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-300 mb-1">总显存 (GB)</label>
+                        <input type="number" id="gpu-vram" step="0.1" placeholder="24" required
+                            class="w-full p-2.5 rounded-lg bg-slate-700 border border-slate-600 text-white placeholder-gray-400 focus:ring-2 focus:ring-green-500">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-300 mb-1">总内存 (GB)</label>
+                        <input type="number" id="gpu-ram" step="0.1" placeholder="64" required
+                            class="w-full p-2.5 rounded-lg bg-slate-700 border border-slate-600 text-white placeholder-gray-400 focus:ring-2 focus:ring-green-500">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-300 mb-1">主机地址</label>
+                    <input type="text" id="gpu-host" value="localhost" 
+                        class="w-full p-2.5 rounded-lg bg-slate-700 border border-slate-600 text-white placeholder-gray-400 focus:ring-2 focus:ring-green-500">
+                </div>
+                <div class="flex gap-3 pt-2">
+                    <button type="button" onclick="closeGpuModal()" class="flex-1 py-2.5 rounded-lg bg-slate-600 text-gray-300 hover:bg-slate-500 transition font-medium">取消</button>
+                    <button type="submit" class="flex-1 py-2.5 rounded-lg bg-green-600 text-white hover:bg-green-700 transition font-medium">保存</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- 添加渠道弹窗 -->
+    <div id="channel-modal" class="fixed inset-0 modal-overlay z-50 flex items-center justify-center hidden">
+        <div class="bg-slate-800 rounded-2xl p-6 w-full max-w-md shadow-2xl border border-slate-700">
+            <h3 class="text-lg font-bold text-white mb-4"><i class="fas fa-plug mr-2 text-indigo-400"></i>添加渠道</h3>
+            <form id="channel-form" class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-300 mb-1">渠道名称</label>
+                    <input type="text" id="ch-name" placeholder="如：whisper-转写服务" required
+                        class="w-full p-2.5 rounded-lg bg-slate-700 border border-slate-600 text-white placeholder-gray-400 focus:ring-2 focus:ring-indigo-500">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-300 mb-1">绑定显卡</label>
+                    <select id="ch-gpu" required class="w-full p-2.5 rounded-lg bg-slate-700 border border-slate-600 text-white focus:ring-2 focus:ring-indigo-500">
+                        <option value="">请先添加显卡</option>
+                    </select>
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-300 mb-1">服务类型</label>
+                        <input type="text" id="ch-type" list="service-options" placeholder="自定义输入或选择"
+                            class="w-full p-2.5 rounded-lg bg-slate-700 border border-slate-600 text-white focus:ring-2 focus:ring-indigo-500">
+                        <datalist id="service-options">
+                            <option value="whisper">
+                            <option value="comfyui">
+                            <option value="llm">
+                        </datalist>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-300 mb-1">权重 (1-100)</label>
+                        <input type="number" id="ch-weight" value="10" min="1" max="100"
+                            class="w-full p-2.5 rounded-lg bg-slate-700 border border-slate-600 text-white focus:ring-2 focus:ring-indigo-500">
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-300 mb-1">服务提交地址</label>
+                        <input type="text" id="ch-url" placeholder="http://localhost:8188/prompt"
+                            class="w-full p-2.5 rounded-lg bg-slate-700 border border-slate-600 text-white placeholder-gray-400 focus:ring-2 focus:ring-indigo-500">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-300 mb-1">执行模式</label>
+                        <select id="ch-mode" class="w-full p-2.5 rounded-lg bg-slate-700 border border-slate-600 text-white focus:ring-2 focus:ring-indigo-500">
+                            <option value="sync">同步 (请求完即结束)</option>
+                            <option value="async">异步 (需轮询等待结果)</option>
+                        </select>
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-300 mb-1">状态查询/轮询地址 (异步模式必填)</label>
+                    <input type="text" id="ch-query-url" placeholder="http://localhost:8188/history/{id}"
+                        class="w-full p-2.5 rounded-lg bg-slate-700 border border-slate-600 text-white placeholder-gray-400 focus:ring-2 focus:ring-indigo-500">
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-300 mb-1">显存占用 (GB)</label>
+                        <input type="number" id="ch-vram" step="0.1" value="0" 
+                            class="w-full p-2.5 rounded-lg bg-slate-700 border border-slate-600 text-white focus:ring-2 focus:ring-indigo-500">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-300 mb-1">内存占用 (GB)</label>
+                        <input type="number" id="ch-ram" step="0.1" value="0"
+                            class="w-full p-2.5 rounded-lg bg-slate-700 border border-slate-600 text-white focus:ring-2 focus:ring-indigo-500">
+                    </div>
+                </div>
+                <div class="flex gap-3 pt-2">
+                    <button type="button" onclick="closeChannelModal()" class="flex-1 py-2.5 rounded-lg bg-slate-600 text-gray-300 hover:bg-slate-500 transition font-medium">取消</button>
+                    <button type="submit" class="flex-1 py-2.5 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 transition font-medium">保存</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        let gpuData = [];
+        let activeTab = 'active';
+        let currentEditChannelId = null;
+
+        // ===== 数据加载 =====
+        async function loadAll() {
+            await loadGpus();
+            await loadChannels();
+            await loadStatus();
+            await loadQueue();
+        }
+
+        function showToast(msg) {
+            const toast = document.createElement('div');
+            toast.className = 'fixed bottom-5 right-5 bg-indigo-600 text-white px-6 py-3 rounded-xl shadow-2xl z-[100] animate-bounce';
+            toast.innerHTML = `<i class="fas fa-info-circle mr-2"></i>${msg}`;
+            document.body.appendChild(toast);
+            setTimeout(() => toast.remove(), 3000);
+        }
+
+        async function loadStatus() {
+            try {
+                const res = await fetch('/api/status');
+                const data = await res.json();
+                const el = document.getElementById('conn-status');
+                if (data.redis_connected) {
+                    el.className = 'px-4 py-1.5 rounded-full text-sm font-medium bg-green-500/20 text-green-400 border border-green-500/30';
+                    el.innerHTML = '<i class="fas fa-circle text-xs mr-1"></i>Redis 已连接';
+                } else {
+                    el.className = 'px-4 py-1.5 rounded-full text-sm font-medium bg-red-500/20 text-red-400 border border-red-500/30';
+                    el.innerHTML = '<i class="fas fa-circle text-xs mr-1"></i>Redis 未连接';
+                }
+            } catch(e) {
+                const el = document.getElementById('conn-status');
+                el.className = 'px-4 py-1.5 rounded-full text-sm font-medium bg-red-500/20 text-red-400 border border-red-500/30';
+                el.innerHTML = '<i class="fas fa-circle text-xs mr-1"></i>连接异常';
+            }
+        }
+
+        async function loadGpus() {
+            try {
+                const res = await fetch('/api/gpus');
+                const data = await res.json();
+                gpuData = data.gpus || [];
+                const el = document.getElementById('gpu-list');
+                if (gpuData.length === 0) {
+                    el.innerHTML = '<div class="col-span-3 text-center text-gray-500 py-12 glass rounded-2xl"><i class="fas fa-server text-4xl mb-3 block text-gray-600"></i>暂无显卡，点击右上角添加</div>';
+                    return;
+                }
+                el.innerHTML = gpuData.map(g => `
+                    <div class="bg-slate-800/80 border border-slate-700 rounded-xl p-5 card-hover">
+                        <div class="flex justify-between items-start mb-3">
+                            <div>
+                                <div class="font-bold text-white text-lg">${g.name}</div>
+                                <div class="text-xs text-gray-400 mt-0.5"><i class="fas fa-network-wired mr-1"></i>${g.host} · ID: ${g.id}</div>
+                            </div>
+                            <button onclick="deleteGpu('${g.id}')" class="text-gray-500 hover:text-red-400 transition p-1" title="删除">
+                                <i class="fas fa-trash-alt"></i>
+                            </button>
+                        </div>
+                        <div class="grid grid-cols-2 gap-3 text-sm">
+                            <div class="bg-slate-700/50 rounded-lg p-2.5 text-center">
+                                <div class="text-gray-400 text-xs mb-1">显存</div>
+                                <div class="text-green-400 font-bold">${g.total_vram} GB</div>
+                            </div>
+                            <div class="bg-slate-700/50 rounded-lg p-2.5 text-center">
+                                <div class="text-gray-400 text-xs mb-1">内存</div>
+                                <div class="text-blue-400 font-bold">${g.total_ram} GB</div>
+                            </div>
+                        </div>
+                    </div>
+                `).join('');
+            } catch(e) { console.error(e); }
+        }
+
+        async function loadChannels() {
+            try {
+                const res = await fetch('/api/channels');
+                const data = await res.json();
+                const channels = data.channels || [];
+                const el = document.getElementById('channel-list');
+                if (channels.length === 0) {
+                    el.innerHTML = '<div class="col-span-3 text-center text-gray-500 py-12 glass rounded-2xl"><i class="fas fa-plug text-4xl mb-3 block text-gray-600"></i>暂无渠道，点击右上角添加</div>';
+                    return;
+                }
+                const typeColors = { whisper: 'amber', comfyui: 'purple', llm: 'cyan' };
+                el.innerHTML = channels.map(ch => {
+                    const c = typeColors[ch.service_type] || 'gray';
+                    const gpu = gpuData.find(g => g.id === ch.gpu_id);
+                    const gpuName = gpu ? gpu.name : '未知显卡';
+                    return `
+                    <div class="bg-slate-800/80 border border-slate-700 rounded-xl p-5 card-hover">
+                        <div class="flex justify-between items-start mb-3">
+                            <div>
+                                <div class="font-bold text-white">${ch.name}</div>
+                                <div class="text-xs text-gray-400 mt-0.5">ID: ${ch.id}</div>
+                            </div>
+                            <div class="flex items-center gap-1">
+                                <button onclick='editChannel(${JSON.stringify(ch)})' class="text-gray-500 hover:text-indigo-400 transition p-1" title="编辑">
+                                    <i class="fas fa-edit text-sm"></i>
+                                </button>
+                                <button onclick="deleteChannel('${ch.id}')" class="text-gray-500 hover:text-red-400 transition p-1" title="删除">
+                                    <i class="fas fa-trash-alt text-sm"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div class="space-y-1.5 text-sm text-gray-300">
+                            <div class="flex items-center"><span class="px-2 py-0.5 rounded text-[10px] font-bold bg-${c}-500/20 text-${c}-400 border border-${c}-500/30 uppercase mr-2">${ch.service_type}</span> <span class="text-xs text-gray-500">${ch.execution_mode === 'async' ? '🕒 异步轮询' : '⚡ 同步模式'}</span></div>
+                            <div class="truncate" title="${ch.service_url}"><i class="fas fa-link text-gray-500 mr-2 w-4"></i>${ch.service_url || '未配置'}</div>
+                            <div class="flex gap-4 mt-2 pt-2 border-t border-slate-700/50">
+                                <span><i class="fas fa-memory text-green-500 mr-1"></i>${ch.base_vram}G</span>
+                                <span><i class="fas fa-weight-hanging text-yellow-500 mr-1"></i>权 ${ch.weight}</span>
+                                <span class="text-xs text-gray-500 ml-auto">${gpuName}</span>
+                            </div>
+                        </div>
+                    </div>`;
+                }).join('');
+            } catch(e) { console.error(e); }
+        }
+
+        // ===== 弹窗控制 =====
+        function openGpuModal() { document.getElementById('gpu-modal').classList.remove('hidden'); }
+        function closeGpuModal() { document.getElementById('gpu-modal').classList.add('hidden'); document.getElementById('gpu-form').reset(); }
+        
+        function openChannelModal(data = null) {
+            const sel = document.getElementById('ch-gpu');
+            sel.innerHTML = gpuData.length === 0
+                ? '<option value="">请先添加显卡</option>'
+                : gpuData.map(g => `<option value="${g.id}">${g.name} (${g.total_vram}GB)</option>`).join('');
+            
+            const title = document.querySelector('#channel-modal h3');
+            if (data) {
+                title.innerHTML = '<i class="fas fa-edit mr-2 text-indigo-400"></i>编辑渠道';
+                currentEditChannelId = data.id;
+                document.getElementById('ch-name').value = data.name;
+                document.getElementById('ch-gpu').value = data.gpu_id;
+                document.getElementById('ch-type').value = data.service_type;
+                document.getElementById('ch-url').value = data.service_url;
+                document.getElementById('ch-query-url').value = data.query_url || '';
+                document.getElementById('ch-mode').value = data.execution_mode || 'sync';
+                document.getElementById('ch-vram').value = data.base_vram;
+                document.getElementById('ch-ram').value = data.base_ram;
+                document.getElementById('ch-weight').value = data.weight;
+            } else {
+                title.innerHTML = '<i class="fas fa-plus mr-2 text-indigo-400"></i>添加渠道';
+                currentEditChannelId = null;
+                document.getElementById('channel-form').reset();
+            }
+            document.getElementById('channel-modal').classList.remove('hidden');
+        }
+
+        function editChannel(ch) { openChannelModal(ch); }
+
+        function closeChannelModal() { 
+            document.getElementById('channel-modal').classList.add('hidden'); 
+            document.getElementById('channel-form').reset();
+            currentEditChannelId = null;
+        }
+
+        // ===== 表单提交 =====
+        document.getElementById('gpu-form').onsubmit = async (e) => {
+            e.preventDefault();
+            const payload = {
+                name: document.getElementById('gpu-name').value,
+                total_vram: parseFloat(document.getElementById('gpu-vram').value),
+                total_ram: parseFloat(document.getElementById('gpu-ram').value),
+                host: document.getElementById('gpu-host').value,
+            };
+            try {
+                const res = await fetch('/api/gpus', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(payload)
+                });
+                if (res.ok) {
+                    showToast("显卡添加成功");
+                    closeGpuModal();
+                    await loadAll();
+                } else {
+                    const err = await res.json();
+                    showToast("添加失败: " + (err.detail || "未知错误"));
+                }
+            } catch(e) { showToast("网络请求失败"); }
+        };
+
+        document.getElementById('channel-form').onsubmit = async (e) => {
+            e.preventDefault();
+            const payload = {
+                name: document.getElementById('ch-name').value,
+                gpu_id: document.getElementById('ch-gpu').value,
+                service_type: document.getElementById('ch-type').value,
+                service_url: document.getElementById('ch-url').value,
+                query_url: document.getElementById('ch-query-url').value,
+                execution_mode: document.getElementById('ch-mode').value,
+                base_vram: parseFloat(document.getElementById('ch-vram').value),
+                base_ram: parseFloat(document.getElementById('ch-ram').value),
+                weight: parseInt(document.getElementById('ch-weight').value),
+            };
+
+            try {
+                const url = currentEditChannelId ? `/api/channels/${currentEditChannelId}` : '/api/channels';
+                const method = currentEditChannelId ? 'PUT' : 'POST';
+                const res = await fetch(url, {
+                    method: method,
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(payload)
+                });
+                if (res.ok) {
+                    showToast(currentEditChannelId ? "渠道更新成功" : "渠道添加成功");
+                    closeChannelModal();
+                    await loadAll();
+                } else {
+                    const err = await res.json();
+                    showToast("操作失败: " + (err.detail || "未知错误"));
+                }
+            } catch(e) { showToast("网络请求失败"); }
+        };
+
+        // ===== 任务队列 =====
+        function switchTab(tab) {
+            activeTab = tab;
+            const activeEl = document.getElementById('tab-active');
+            const historyEl = document.getElementById('tab-history');
+            const clearBtn = document.getElementById('btn-clear-history');
+            
+            if (tab === 'active') {
+                activeEl.className = 'px-6 py-2 rounded-lg text-sm font-bold transition-all bg-indigo-600 text-white shadow-lg';
+                historyEl.className = 'px-6 py-2 rounded-lg text-sm font-bold transition-all text-gray-400 hover:text-white';
+                clearBtn.classList.add('hidden');
+            } else {
+                historyEl.className = 'px-6 py-2 rounded-lg text-sm font-bold transition-all bg-indigo-600 text-white shadow-lg';
+                activeEl.className = 'px-6 py-2 rounded-lg text-sm font-bold transition-all text-gray-400 hover:text-white';
+                clearBtn.classList.remove('hidden');
+            }
+            loadQueue();
+        }
+
+        async function loadQueue() {
+            try {
+                const res = await fetch('/api/queue');
+                const data = await res.json();
+                let tasks = data.tasks || [];
+                if (activeTab === 'active') {
+                    tasks = tasks.filter(t => ['pending', 'running'].includes(t.status));
+                } else {
+                    tasks = tasks.filter(t => ['completed', 'failed'].includes(t.status));
+                }
+
+                const el = document.getElementById('queue-list');
+                if (tasks.length === 0) {
+                    el.innerHTML = `<div class="col-span-3 text-center text-gray-500 py-12 glass rounded-2xl"><i class="fas fa-${activeTab === 'active' ? 'check-circle' : 'history'} text-4xl mb-3 block text-gray-600"></i>当前${activeTab === 'active' ? '没有排队中的任务' : '暂无历史记录'}</div>`;
+                    return;
+                }
+                
+                el.innerHTML = tasks.map(t => {
+                    const date = new Date(t.created_at * 1000);
+                    const timeStr = date.toLocaleTimeString();
+                    let statusIcon = '<i class="fas fa-hourglass-half"></i>', statusText = '排队中', statusClass = 'text-amber-400', barClass = 'bg-amber-500';
+                    
+                    if (t.status === 'running') {
+                        statusIcon = '<i class="fas fa-spinner fa-spin"></i>'; statusText = '处理中'; statusClass = 'text-blue-400'; barClass = 'bg-blue-500';
+                    } else if (t.status === 'completed') {
+                        statusIcon = '<i class="fas fa-check-circle"></i>'; statusText = '已完成'; statusClass = 'text-green-400'; barClass = 'bg-green-500';
+                    } else if (t.status === 'failed') {
+                        statusIcon = '<i class="fas fa-exclamation-circle"></i>'; statusText = '已失败'; statusClass = 'text-red-400'; barClass = 'bg-red-500';
+                    }
+
+                    return `
+                    <div class="bg-slate-800/80 border border-slate-700 rounded-xl p-4 flex flex-col relative overflow-hidden group card-hover">
+                        <div class="absolute left-0 top-0 bottom-0 w-1 ${barClass}"></div>
+                        <div class="flex justify-between items-start mb-3 pl-2">
+                            <div>
+                                <div class="font-bold text-white text-sm">任务: ${t.id.substring(0,8)}...</div>
+                                <div class="text-[10px] ${statusClass} mt-0.5 font-bold uppercase tracking-wider">${statusIcon} ${statusText}</div>
+                            </div>
+                            <div class="flex gap-1">
+                                ${t.status === 'pending' ? `<button onclick="cancelTask('${t.id}')" class="text-gray-500 hover:text-red-400 transition bg-slate-900/50 rounded p-1.5"><i class="fas fa-times"></i></button>` 
+                                : `<button onclick="deleteTaskRecord('${t.id}')" class="text-gray-500 hover:text-red-400 transition bg-slate-900/50 rounded p-1.5"><i class="fas fa-trash-alt"></i></button>`}
+                            </div>
+                        </div>
+                        <div class="pl-2 space-y-2 mt-1 text-xs text-gray-400">
+                            <div class="flex justify-between"><span>服务类型:</span> <span class="text-white font-mono">${t.service_type}</span></div>
+                            <div class="flex justify-between"><span>提交时间:</span> <span class="text-gray-300">${timeStr}</span></div>
+                            ${t.error ? `<div class="mt-2 p-2 bg-red-900/30 border border-red-500/20 rounded text-red-300 break-all text-[11px]">${t.error}</div>` : ''}
+                            ${t.status === 'completed' ? `<button onclick='viewResult("${t.id}")' class="w-full mt-2 py-2 bg-indigo-600/20 text-indigo-400 rounded-lg hover:bg-indigo-600/30 transition border border-indigo-500/30 font-bold"><i class="fas fa-eye mr-1"></i> 查看结果</button>` : ''}
+                        </div>
+                    </div>`;
+                }).join('');
+            } catch(e) { console.error(e); }
+        }
+
+        async function viewResult(taskId) {
+            try {
+                const res = await fetch(`/api/tasks/${taskId}`);
+                const task = await res.json();
+                document.getElementById('result-content').innerText = JSON.stringify(task.result || {info: "无结果数据"}, null, 4);
+                document.getElementById('result-modal').classList.remove('hidden');
+            } catch(e) { showToast("加载结果失败"); }
+        }
+
+        function closeResultModal() { document.getElementById('result-modal').classList.add('hidden'); }
+
+        async function deleteTaskRecord(taskId) {
+            if(!confirm('确定要永久删除这条任务记录吗？')) return;
+            try {
+                const res = await fetch(`/api/tasks/${taskId}`, { method: 'DELETE' });
+                if (res.ok) { showToast("记录已删除"); await loadQueue(); }
+            } catch(e) { showToast("操作失败"); }
+        }
+
+        async function clearHistory() {
+            if(!confirm('确定要清空所有已完成和已失败的任务记录吗？')) return;
+            try {
+                const res = await fetch('/api/tasks/history/clear', { method: 'DELETE' });
+                const data = await res.json();
+                showToast(`已清空 ${data.deleted_count} 条记录`);
+                await loadQueue();
+            } catch(e) { showToast("清空失败"); }
+        }
+
+        async function cancelTask(taskId) {
+            if(!confirm('确定要取消此任务吗？')) return;
+            try {
+                const res = await fetch(`/api/tasks/${taskId}/cancel`, { method: 'DELETE' });
+                if (res.ok) { showToast("任务已取消"); await loadQueue(); }
+            } catch(e) { showToast("操作失败"); }
+        }
+
+        // ===== 系统设置 =====
+        async function openSettings() {
+            try {
+                const res = await fetch('/api/config');
+                const config = await res.json();
+                if(config.redis) {
+                    document.getElementById('conf-redis-host').value = config.redis.host || '';
+                    document.getElementById('conf-redis-port').value = config.redis.port || 6379;
+                    document.getElementById('conf-redis-db').value = config.redis.db || 0;
+                    document.getElementById('conf-redis-pass').value = config.redis.password || '';
+                }
+                document.getElementById('settings-modal').classList.remove('hidden');
+            } catch(e) { showToast("获取配置失败"); }
+        }
+
+        function closeSettings() { document.getElementById('settings-modal').classList.add('hidden'); }
+
+        async function saveSettings() {
+            const config = {
+                redis: {
+                    host: document.getElementById('conf-redis-host').value,
+                    port: parseInt(document.getElementById('conf-redis-port').value),
+                    db: parseInt(document.getElementById('conf-redis-db').value),
+                    password: document.getElementById('conf-redis-pass').value
+                }
+            };
+            try {
+                const res = await fetch('/api/config', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(config)
+                });
+                if(res.ok) {
+                    showToast("配置已保存，系统正在自动重启...");
+                    closeSettings();
+                    setTimeout(() => location.reload(), 5000);
+                }
+            } catch(e) { showToast("保存失败"); }
+        }
+
+        async function deleteGpu(id) {
+            if (!confirm('确认删除此显卡？')) return;
+            try {
+                const res = await fetch(`/api/gpus/${id}`, { method: 'DELETE' });
+                if (res.ok) { showToast("显卡已删除"); await loadAll(); }
+                else { showToast("删除失败，请先检查是否有绑定渠道"); }
+            } catch(e) { showToast("请求失败"); }
+        }
+
+        async function deleteChannel(id) {
+            if (!confirm('确认删除此渠道？')) return;
+            try {
+                const res = await fetch(`/api/channels/${id}`, { method: 'DELETE' });
+                if (res.ok) { showToast("渠道已删除"); await loadAll(); }
+            } catch(e) { showToast("请求失败"); }
+        }
+
+        // ===== 初始化 =====
+        loadAll();
+        setInterval(loadStatus, 5000);
+        setInterval(() => { if (activeTab === 'active') loadQueue(); }, 3000);
+    </script>
+</body>
+</html>

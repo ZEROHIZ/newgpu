@@ -1,0 +1,16 @@
+version: '3.8'
+
+services:
+  gpu-redis:
+    build: .
+    image: gpu-redis:latest
+    container_name: gpu-redis-app
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+      - ./config.yaml:/app/config.yaml
+    restart: always
+    environment:
+      - DEFAULT_GPU_ID=0
+      - DEFAULT_GPU_INDEX=0
