@@ -28,23 +28,25 @@ app.mount("/uploads", StaticFiles(directory="data/uploads"), name="uploads")
 
 # ========== 系统工具 ==========
 
-async def cleanup_old_files():
-    """清理 data/temp 和 data/uploads 中超过 24 小时的文件"""
+async def cleanup_old_files(force_all=False):
+    """清理 data/temp 和 data/uploads 中的文件"""
     import time
     now = time.time()
-    retention = 24 * 3600 # 24 小时
+    retention = 0 if force_all else 24 * 3600 # 24 小时
     
     dirs = ["data/temp", "data/uploads"]
+    count = 0
     for d in dirs:
         if not os.path.exists(d): continue
         for f in os.listdir(d):
             fpath = os.path.join(d, f)
             if os.path.isfile(fpath):
-                if now - os.path.getmtime(fpath) > retention:
+                if force_all or (now - os.path.getmtime(fpath) > retention):
                     try:
                         os.remove(fpath)
-                        print(f"🧹 已清理过期文件: {fpath}")
+                        count += 1
                     except: pass
+    return count
 
 # ========== 数据模型 ==========
 
@@ -215,6 +217,24 @@ async def upload_file(file: UploadFile = File(...)):
         "url": f"/uploads/{filename}",
         "full_path": os.path.abspath(save_path)
     }
+
+@app.get("/api/system/storage")
+async def get_storage_stats():
+    stats = {}
+    for d in ["data/temp", "data/uploads"]:
+        os.makedirs(d, exist_ok=True)
+        files = os.listdir(d)
+        size = sum(os.path.getsize(os.path.join(d, f)) for f in files if os.path.isfile(os.path.join(d, f)))
+        stats[d.split("/")[-1]] = {
+            "count": len(files),
+            "size": round(size / (1024 * 1024), 2) # MB
+        }
+    return stats
+
+@app.post("/api/system/storage/clear")
+async def manual_clear_storage():
+    deleted_count = await cleanup_old_files(force_all=True)
+    return {"ok": True, "deleted_count": deleted_count}
 
 # ========== 系统状态 ==========
 

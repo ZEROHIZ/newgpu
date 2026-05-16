@@ -40,6 +40,38 @@
             </div>
         </div>
 
+        <!-- 显卡设备管理 ... -->
+
+        <!-- 存储管理 -->
+        <div class="mb-8">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-xl font-bold text-white"><i class="fas fa-database mr-2 text-amber-400"></i>存储管理</h2>
+                <button onclick="clearStorage()" class="px-4 py-2 bg-amber-600/20 text-amber-400 border border-amber-500/30 rounded-lg hover:bg-amber-600/30 transition text-sm">
+                    <i class="fas fa-broom mr-1"></i>清理全部
+                </button>
+            </div>
+            <div id="storage-list" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="glass p-5 rounded-2xl border border-white/5 flex items-center justify-between">
+                    <div class="flex items-center">
+                        <div class="w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center text-amber-400 mr-3"><i class="fas fa-cloud-upload-alt"></i></div>
+                        <div>
+                            <p class="text-xs text-gray-500">上传目录 (uploads)</p>
+                            <h3 id="stat-uploads" class="font-bold text-white">0 文件 / 0 MB</h3>
+                        </div>
+                    </div>
+                </div>
+                <div class="glass p-5 rounded-2xl border border-white/5 flex items-center justify-between">
+                    <div class="flex items-center">
+                        <div class="w-10 h-10 rounded-xl bg-blue-500/10 flex items-center justify-center text-blue-400 mr-3"><i class="fas fa-history"></i></div>
+                        <div>
+                            <p class="text-xs text-gray-500">临时目录 (temp)</p>
+                            <h3 id="stat-temp" class="font-bold text-white">0 文件 / 0 MB</h3>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!-- 渠道管理 -->
         <div class="mb-8">
             <div class="flex justify-between items-center mb-4">
@@ -540,8 +572,27 @@
             } catch(e) { showToast("同步失败"); }
         }
 
+        async function loadStorage() {
+            try {
+                const res = await fetch('/api/system/storage');
+                const data = await res.json();
+                document.getElementById('stat-uploads').innerText = `${data.uploads.count} 文件 / ${data.uploads.size} MB`;
+                document.getElementById('stat-temp').innerText = `${data.temp.count} 文件 / ${data.temp.size} MB`;
+            } catch(e) { }
+        }
+
+        async function clearStorage() {
+            if(!confirm('确定要清理所有上传文件和临时文件吗？这将不可恢复。')) return;
+            try {
+                const res = await fetch('/api/system/storage/clear', { method: 'POST' });
+                const data = await res.json();
+                showToast(`清理完成，删除了 ${data.deleted_count} 个文件`);
+                await loadStorage();
+            } catch(e) { showToast("清理失败"); }
+        }
+
         async function loadAll() {
-            await Promise.all([loadGpus(), loadChannels(), loadQueue(), loadStatus()]);
+            await Promise.all([loadGpus(), loadChannels(), loadQueue(), loadStatus(), loadStorage()]);
         }
 
         // ===== 初始化 =====
