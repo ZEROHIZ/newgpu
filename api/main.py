@@ -17,6 +17,10 @@ from core.persistence import get_all_gpus, save_gpus, get_all_channels, save_cha
 
 app = FastAPI(title="GPUREDIS API Gateway")
 templates = Jinja2Templates(directory="web/templates")
+
+# 确保静态文件目录存在，防止 FastAPI 报错
+if not os.path.exists("web/static"):
+    os.makedirs("web/static")
 app.mount("/static", StaticFiles(directory="web/static"), name="static")
 
 # ========== 数据模型 ==========
