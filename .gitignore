@@ -11,9 +11,6 @@ env/
 data/*.json
 !data/.gitkeep
 
-# 配置文件 (包含 Redis 密码等敏感信息)
-config.yaml
-
 # IDEs
 .idea/
 .vscode/

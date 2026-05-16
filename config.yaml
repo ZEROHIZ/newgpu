@@ -1,0 +1,19 @@
+# GPUREDIS 配置文件
+# 请根据你的实际环境修改以下配置
+
+# Redis 连接配置
+redis:
+  host: "127.0.0.1"
+  port: 6379
+  db: 0
+  password: ""  # 如果 Redis 没有密码，留空即可
+
+# API 服务配置
+server:
+  host: "0.0.0.0"
+  port: 8000
+
+# GPU 监控配置
+gpu:
+  check_interval: 5     # GPU 状态上报间隔（秒）
+  safety_margin: 0.5    # 显存安全余量（GB），防止 OOM

@@ -10,6 +10,14 @@ def load_config():
     
     config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "config.yaml")
     
+    if not os.path.exists(config_path):
+        # 如果文件不存在，返回一套默认配置
+        return {
+            "redis": {"host": "127.0.0.1", "port": 6379, "db": 0, "password": ""},
+            "server": {"host": "0.0.0.0", "port": 8000},
+            "gpu": {"check_interval": 5, "safety_margin": 0.5}
+        }
+    
     with open(config_path, "r", encoding="utf-8") as f:
         _config = yaml.safe_load(f)
     
