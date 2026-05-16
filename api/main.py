@@ -167,6 +167,12 @@ async def delete_channel(channel_id: str):
     save_channels(all_chs)
     return {"ok": True}
 
+@app.post("/api/agent/sync")
+async def sync_agent():
+    # 设置一个同步信号，有效期 10 秒
+    await redis_manager.client.set("signal:sync_agent", "1", ex=10)
+    return {"ok": True}
+
 # ========== 系统状态 ==========
 
 @app.get("/api/status")

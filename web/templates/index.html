@@ -26,9 +26,14 @@
         <div class="mb-8">
             <div class="flex justify-between items-center mb-4">
                 <h2 class="text-xl font-bold text-white"><i class="fas fa-server mr-2 text-green-400"></i>显卡设备</h2>
-                <button onclick="openGpuModal()" class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition text-sm font-medium">
-                    <i class="fas fa-plus mr-1"></i>添加显卡
-                </button>
+                <div class="flex space-x-2">
+                    <button onclick="syncAgent()" class="px-4 py-2 bg-slate-700 text-gray-300 rounded-lg hover:bg-slate-600 transition text-sm font-medium">
+                        <i class="fas fa-sync-alt mr-1"></i>手动同步
+                    </button>
+                    <button onclick="openGpuModal()" class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition text-sm font-medium">
+                        <i class="fas fa-plus mr-1"></i>添加显卡
+                    </button>
+                </div>
             </div>
             <div id="gpu-list" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 <div class="text-gray-500 text-center py-8">加载中...</div>
@@ -493,6 +498,16 @@
                 const res = await fetch(`/api/channels/${id}`, { method: 'DELETE' });
                 if (res.ok) { showToast("已删除"); await loadAll(); }
             } catch(e) { }
+        }
+
+        async function syncAgent() {
+            try {
+                const res = await fetch('/api/agent/sync', { method: 'POST' });
+                if (res.ok) {
+                    showToast("同步请求已发送，显卡正在重新绑定...");
+                    setTimeout(() => loadAll(), 1000);
+                }
+            } catch(e) { showToast("同步失败"); }
         }
 
         async function loadAll() {

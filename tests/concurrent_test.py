@@ -4,7 +4,7 @@ import time
 import json
 
 # GPUREDIS 调度网关地址
-GATEWAY_URL = "http://localhost:8000/api/tasks"
+GATEWAY_URL = "http://192.168.110.30:6621/api/tasks"
 
 # 配置三个不同的测试任务
 # 请在此处修改你的文件路径和参数
@@ -56,7 +56,7 @@ def submit_and_watch(task_info):
 
         # 开始轮询状态
         while True:
-            status_resp = requests.get(f"http://localhost:8000/api/tasks/{task_id}")
+            status_resp = requests.get(f"http://192.168.110.30:6621/api/tasks/{task_id}")
             task_status = status_resp.json().get("status", "unknown")
             print(f"🕒 {task_info['name']} 当前状态: {task_status}")
             

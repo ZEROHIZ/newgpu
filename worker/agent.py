@@ -116,19 +116,27 @@ class GPUAgent:
         print(f"[{self.agent_id}] Task manager started, searching for channels...")
         while True:
             try:
-                # --- 【新增】动态绑定逻辑 ---
-                # 如果当前是默认 ID "0"，尝试从 Redis 获取真实的显卡 ID
-                if self.gpu_id == "0":
+                # --- 动态绑定与手动同步逻辑 ---
+                # 检查是否有手动同步信号
+                sync_signal = await redis_manager.client.get("signal:sync_agent")
+                
+                # 如果当前是默认 ID "0" 或者收到了手动同步信号
+                if self.gpu_id == "0" or sync_signal:
                     gpu_keys = await redis_manager.keys("gpu_device:*")
                     if gpu_keys:
-                        # 认领第一个发现的显卡设备
                         gpu_data = await redis_manager.get_json(gpu_keys[0])
                         if gpu_data:
-                            self.gpu_id = gpu_data["id"]
-                            print(f"[{self.agent_id}] 🎯 动态认领显卡 ID: {self.gpu_id}")
+                            new_id = gpu_data["id"]
+                            if self.gpu_id != new_id:
+                                self.gpu_id = new_id
+                                print(f"[{self.agent_id}] 🎯 显卡绑定已更新: {self.gpu_id}")
+                    # 处理完信号后删除
+                    if sync_signal:
+                        await redis_manager.client.delete("signal:sync_agent")
 
                 # 1. 发现属于我这张显卡的活跃渠道
                 keys = await redis_manager.keys("channel:*")
+                # ... 剩余逻辑不变 ...
                 found_channels = 0
                 for k in keys:
                     ch = await redis_manager.get_json(k)
