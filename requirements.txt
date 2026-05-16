@@ -1,0 +1,10 @@
+fastapi
+uvicorn[standard]
+jinja2
+pydantic
+redis
+pyyaml
+httpx
+nvidia-ml-py
+psutil
+python-multipart
