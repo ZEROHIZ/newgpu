@@ -113,9 +113,20 @@ class GPUAgent:
 
     async def task_loop(self):
         """管理并启动多个渠道的监听任务"""
-        print(f"[{self.agent_id}] Task manager started, searching for channels on GPU:{self.gpu_id}")
+        print(f"[{self.agent_id}] Task manager started, searching for channels...")
         while True:
             try:
+                # --- 【新增】动态绑定逻辑 ---
+                # 如果当前是默认 ID "0"，尝试从 Redis 获取真实的显卡 ID
+                if self.gpu_id == "0":
+                    gpu_keys = await redis_manager.keys("gpu_device:*")
+                    if gpu_keys:
+                        # 认领第一个发现的显卡设备
+                        gpu_data = await redis_manager.get_json(gpu_keys[0])
+                        if gpu_data:
+                            self.gpu_id = gpu_data["id"]
+                            print(f"[{self.agent_id}] 🎯 动态认领显卡 ID: {self.gpu_id}")
+
                 # 1. 发现属于我这张显卡的活跃渠道
                 keys = await redis_manager.keys("channel:*")
                 found_channels = 0
@@ -125,15 +136,15 @@ class GPUAgent:
                         cid = ch["id"]
                         found_channels += 1
                         if cid not in self.active_workers or self.active_workers[cid].done():
-                            print(f"[{self.agent_id}] 🆕 发现新渠道 {cid} ({ch.get('name')})，准备启动监听...")
+                            print(f"[{self.agent_id}] 🆕 启动渠道监听: {cid} ({ch.get('name')})")
                             self.active_workers[cid] = asyncio.create_task(self.channel_worker(cid))
                 
-                if found_channels == 0:
-                    print(f"[{self.agent_id}] 💤 未发现绑定到 GPU:{self.gpu_id} 的活跃渠道，等待中...")
+                # if found_channels == 0:
+                #     print(f"[{self.agent_id}] 💤 等待渠道绑定到 GPU:{self.gpu_id}...")
             except Exception as e:
                 print(f"[{self.agent_id}] Manager loop error: {e}")
             
-            await asyncio.sleep(5) # 每5秒扫描一次渠道变化
+            await asyncio.sleep(5) 
 
     async def start(self):
         print(f"=== GPUREDIS Agent Started (GPU ID: {self.gpu_id}) ===")
