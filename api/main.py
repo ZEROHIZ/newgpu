@@ -26,6 +26,26 @@ os.makedirs("data/uploads", exist_ok=True)
 app.mount("/static", StaticFiles(directory="web/static"), name="static")
 app.mount("/uploads", StaticFiles(directory="data/uploads"), name="uploads")
 
+# ========== 系统工具 ==========
+
+async def cleanup_old_files():
+    """清理 data/temp 和 data/uploads 中超过 24 小时的文件"""
+    import time
+    now = time.time()
+    retention = 24 * 3600 # 24 小时
+    
+    dirs = ["data/temp", "data/uploads"]
+    for d in dirs:
+        if not os.path.exists(d): continue
+        for f in os.listdir(d):
+            fpath = os.path.join(d, f)
+            if os.path.isfile(fpath):
+                if now - os.path.getmtime(fpath) > retention:
+                    try:
+                        os.remove(fpath)
+                        print(f"🧹 已清理过期文件: {fpath}")
+                    except: pass
+
 # ========== 数据模型 ==========
 
 class GPUDevice(BaseModel):
@@ -72,6 +92,9 @@ async def startup_event():
         for ch in local_channels:
             await redis_manager.set_json(f"channel:{ch['id']}", ch)
         print(f"✅ 数据同步完成: {len(local_gpus)} 显卡, {len(local_channels)} 渠道")
+
+        # --- 清理 24 小时前的临时文件 ---
+        asyncio.create_task(cleanup_old_files())
 
         # 自动启动本地 Agent
         gpu_id = os.getenv("DEFAULT_GPU_ID", "0")
