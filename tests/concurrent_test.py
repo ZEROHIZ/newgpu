@@ -62,15 +62,15 @@ def run_task(task_config):
     }
     payload_data[path_key] = task_config["file_path"]
     
-    # 💡 如果指定了 path_key，并且它不是默认的 file_path，则添加穿透控制字
-    if path_key != "file_path":
-        payload_data["_file_path_key"] = path_key
-    
-    # 提交任务
+    # 提交任务，按照用户的提议，_file_path_key 与 payload 处于同级 (即最外层)
     payload = {
         "service_type": task_config["service_type"],
         "payload": payload_data
     }
+    
+    # 如果定义了 path_key，则放在 TaskRequest 的最外层作为系统控制字
+    if path_key:
+        payload["_file_path_key"] = path_key
     
     try:
         resp = requests.post(TASKS_URL, json=payload)
@@ -98,24 +98,24 @@ def run_task(task_config):
             print(f"❌ {name} 提交失败: {resp.text}")
     except Exception as e:
         print(f"❌ {name} 请求异常: {e}")
-
+ 
 if __name__ == "__main__":
     print("=== GPUREDIS 分布式并发与文件上传穿透测试工具 ===")
     
-    # 定义任务：同时测试传统格式与最新单键穿透上传格式
+    # 定义任务：同时测试传统格式与最新外层单键穿透上传格式
     tasks = [
         {
-            "name": "任务 1 (默认 file_path 上传测试)",
+            "name": "任务 1 (默认没有 _file_path_key，回退模式测试)",
             "service_type": "whisper",
             "file_path": LOCAL_FILES[0],
             "path_key": "file_path",  # 默认键名测试
             "model": "deepdml/faster-whisper-large-v3-turbo-ct2"
         },
         {
-            "name": "任务 2 (最新单键穿透 _file_path_key 上传测试)",
+            "name": "任务 2 (最外层 _file_path_key='file' 完美穿透测试)",
             "service_type": "whisper",
             "file_path": LOCAL_FILES[1],
-            "path_key": "file",  # 💡 动态定义上传给上游的 Key 为 "file"（匹配 Whisper 服务要求），测试穿透转发
+            "path_key": "file",  # 💡 动态定义上传给上游的 Key 为 "file" 以完美契合 Whisper 上游！
             "model": "deepdml/faster-whisper-large-v3-turbo-ct2"
         }
     ]

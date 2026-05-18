@@ -70,17 +70,17 @@ curl -X POST "http://localhost:8000/api/tasks" \
 ### 2. 提交包含文件上传的穿透中转任务 (以 VoxCPM2 / ComfyUI 等为例)
 当您的上游 AI 推理接口需要通过 **Multipart 表单**上传文件，且不同的服务所需的表单字段名（Key）不同时（例如 Whisper 表单键为 `file`，语音合成表单键为 `audio`，图片生成表单键为 `image`），调度系统提供了一套**纯粹无侵入的单键穿透传输设计**。
 
-您只需在 `payload` 载荷中传入需要上传的文件路径（支持网络 HTTP 链接或本地路径），并通过 **`_file_path_key`** 指定文件所在的键名：
+您只需在 `payload` 载荷中传入需要上传的文件路径（支持网络 HTTP 链接或本地路径），并通过最外层的 **`_file_path_key`** 指定文件所在的键名（这能避免将元数据参数注入到 payload 内部，防止污染直接发送给上游的请求主体）：
 
 ```bash
 curl -X POST "http://localhost:8000/api/tasks" \
      -H "Content-Type: application/json" \
      -d '{
        "service_type": "voxcpm",
+       "_file_path_key": "audio",
        "payload": {
          "audio": "http://网关IP:8000/uploads/input_ref.wav",
-         "model": "openbmb/VoxCPM2",
-         "_file_path_key": "audio"
+         "model": "openbmb/VoxCPM2"
        }
      }'
 ```

@@ -53,19 +53,9 @@ class GPUAgent:
             # 2. 转发请求到上游服务 (支持 JSON 或文件上传)
             async with httpx.AsyncClient(timeout=600.0) as client:
                 payload = task_data.get("payload", {})
-                
-                # 兼容与穿透智能识别
-                _file_path_key = payload.get("_file_path_key")
-                if _file_path_key:
-                    # 💡 客户端明确指定了动态穿透
-                    path_key = _file_path_key
-                    file_path = payload.get(path_key)
-                    multipart_key = path_key  # Multipart 的表单 Key 动态穿透为客户端指定的那个键名
-                else:
-                    # 💡 客户端未指定，走向下兼容的老接口默认模式
-                    path_key = "file_path"
-                    file_path = payload.get(path_key)
-                    multipart_key = "file"    # 老接口默认将 Multipart 表单的上传 Key 设为 "file"
+                # 获取任务最外层声明的文件路径键名，若没有则默认依然是 "file_path"
+                path_key = task_data.get("_file_path_key") or "file_path"
+                file_path = payload.get(path_key)
                 
                 # --- 【新增】远程文件下载逻辑 ---
                 if file_path and (file_path.startswith("http://") or file_path.startswith("https://")):
@@ -79,6 +69,8 @@ class GPUAgent:
                         with open(temp_file, "wb") as f:
                             f.write(dl_resp.content)
                         file_path = temp_file # 更新为本地临时路径
+                        # 💡 用户天才构想：把下载好的本地临时文件路径重新写回到 payload 中原本对应的键！
+                        payload[path_key] = file_path
                     else:
                         print(f"[{self.agent_id}] ❌ 下载远程文件失败: {dl_resp.status_code}")
                 
@@ -86,12 +78,12 @@ class GPUAgent:
                 
                 # 特殊处理：如果是文件任务且本地存在该文件
                 if file_path and os.path.exists(file_path):
-                    print(f"[{self.agent_id}] 📎 正在上传流到服务: {file_path} (表单字段名: {multipart_key})")
+                    print(f"[{self.agent_id}] 📎 正在上传流到服务: {file_path} (表单字段名: {path_key})")
                     with open(file_path, "rb") as f:
-                        # 构造 Multipart 上传，使用 multipart_key 作为表单键名！
-                        files = {multipart_key: (os.path.basename(file_path), f)}
-                        # 其他参数作为表单数据，同时剔除原文件路径字段和系统级控制参数 _file_path_key，保持上游纯净
-                        data = {k: v for k, v in payload.items() if k not in [path_key, "_file_path_key"]}
+                        # 构造 Multipart 上传，使用 path_key 穿透作为 Multipart 的表单键名！
+                        files = {path_key: (os.path.basename(file_path), f)}
+                        # 其他参数作为表单数据，同时剔除 path_key 变量（因为此时 _file_path_key 在最外层，不在 payload 内部，所以不需剔除）
+                        data = {k: v for k, v in payload.items() if k != path_key}
                         response = await client.post(service_url, files=files, data=data)
                 else:
                     # 普通 JSON 转发

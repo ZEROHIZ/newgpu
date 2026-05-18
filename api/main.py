@@ -2,7 +2,7 @@ from fastapi import FastAPI, HTTPException, Request, UploadFile, File
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional, List
 from core.redis_client import redis_manager
 import uuid
@@ -259,6 +259,7 @@ class TaskRequest(BaseModel):
     service_type: str
     priority: int = 0
     payload: dict
+    file_path_key: Optional[str] = Field(None, alias="_file_path_key")
 
 @app.post("/api/tasks")
 async def create_task(req: TaskRequest):
@@ -318,6 +319,7 @@ async def create_task(req: TaskRequest):
         "gpu_id": selected_channel["gpu_id"],
         "vram_allocated": selected_channel.get("base_vram", 0),
         "payload": req.payload,
+        "_file_path_key": req.file_path_key,  # 💡 保存外层控制字到任务最外层
         "status": "pending",
         "created_at": time.time()
     }
