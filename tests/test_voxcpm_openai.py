@@ -9,8 +9,17 @@ if sys.stdout.encoding != 'utf-8':
     import io
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 
-# GPUREDIS 调度网关地址与端口（使用 6621）
+# 💡 双通道网关地址自适应探测（优先本地 127.0.0.1，不通则自动切换到局域网 GPU 节点）
 BASE_URL = "http://127.0.0.1:6621"
+try:
+    print("🔌 正在探测本地网关 (127.0.0.1)...")
+    r = requests.get(f"{BASE_URL}/api/status", timeout=1.5)
+    if r.status_code == 200:
+        print("💡 已成功连通本地网关服务！")
+except Exception:
+    print("📡 本地网关不可用，自动切换到局域网 GPU 调度节点 (192.168.110.30)...")
+    BASE_URL = "http://192.168.110.30:6621"
+
 TASKS_URL = f"{BASE_URL}/api/tasks"
 CHANNELS_URL = f"{BASE_URL}/api/channels"
 GPUS_URL = f"{BASE_URL}/api/gpus"
