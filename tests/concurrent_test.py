@@ -3,9 +3,15 @@ import threading
 import time
 import json
 import os
+import sys
 
-# GPUREDIS 调度网关地址
-BASE_URL = "http://192.168.110.30:6621"
+# 确保控制台输出编码为 utf-8，避免 Windows 下控制台中文及 Emoji 乱码和崩溃
+if sys.stdout.encoding != 'utf-8':
+    import io
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+
+# GPUREDIS 调度网关地址与端口（使用 6621）
+BASE_URL = "http://127.0.0.1:6621"
 TASKS_URL = f"{BASE_URL}/api/tasks"
 UPLOAD_URL = f"{BASE_URL}/api/upload"
 
@@ -19,21 +25,25 @@ LOCAL_FILES = [
 def upload_file(local_path):
     """上传文件到网关并返回远程 URL"""
     if not os.path.exists(local_path):
-        print(f"⚠️ 文件不存在: {local_path}")
+        print(f"⚠️ 测量提示 - 文件暂不存在，请确保路径正确: {local_path}")
         return local_path
     
     print(f"📤 正在上传文件: {os.path.basename(local_path)} ...")
-    with open(local_path, "rb") as f:
-        files = {"file": (os.path.basename(local_path), f)}
-        resp = requests.post(UPLOAD_URL, files=files)
-        if resp.status_code == 200:
-            data = resp.json()
-            remote_url = f"{BASE_URL}{data['url']}"
-            print(f"✅ 上传成功: {remote_url}")
-            return remote_url
-        else:
-            print(f"❌ 上传失败: {resp.text}")
-            return local_path
+    try:
+        with open(local_path, "rb") as f:
+            files = {"file": (os.path.basename(local_path), f)}
+            resp = requests.post(UPLOAD_URL, files=files)
+            if resp.status_code == 200:
+                data = resp.json()
+                remote_url = f"{BASE_URL}{data['url']}"
+                print(f"✅ 上传成功: {remote_url}")
+                return remote_url
+            else:
+                print(f"❌ 上传失败: {resp.text}")
+                return local_path
+    except Exception as e:
+        print(f"❌ 上传网络异常: {e}")
+        return local_path
 
 def run_task(task_config):
     name = task_config["name"]
@@ -45,13 +55,21 @@ def run_task(task_config):
         remote_url = upload_file(file_path)
         task_config["file_path"] = remote_url
     
+    # 动态把文件路径写进指定的键名中，测试单键穿透功能
+    path_key = task_config.get("path_key", "file_path")
+    payload_data = {
+        "model": task_config.get("model", "default")
+    }
+    payload_data[path_key] = task_config["file_path"]
+    
+    # 💡 如果指定了 path_key，并且它不是默认的 file_path，则添加穿透控制字
+    if path_key != "file_path":
+        payload_data["_file_path_key"] = path_key
+    
     # 提交任务
     payload = {
         "service_type": task_config["service_type"],
-        "payload": {
-            "file_path": task_config["file_path"],
-            "model": task_config.get("model", "default")
-        }
+        "payload": payload_data
     }
     
     try:
@@ -70,6 +88,8 @@ def run_task(task_config):
                     print(f"🎉 {name} 执行结束！状态: {status}")
                     if status == "failed":
                         print(f"❌ 错误详情: {status_data.get('error')}")
+                    else:
+                        print(f"🥇 {name} 运行成功！Result: {status_data.get('result')}")
                     break
                 
                 print(f"🕒 {name} 当前状态: {status}")
@@ -80,20 +100,22 @@ def run_task(task_config):
         print(f"❌ {name} 请求异常: {e}")
 
 if __name__ == "__main__":
-    print("=== GPUREDIS 分布式并发测试工具 (带自动上传) ===")
+    print("=== GPUREDIS 分布式并发与文件上传穿透测试工具 ===")
     
-    # 定义任务
+    # 定义任务：同时测试传统格式与最新单键穿透上传格式
     tasks = [
         {
-            "name": "任务 1 (音频上传转写)",
+            "name": "任务 1 (默认 file_path 上传测试)",
             "service_type": "whisper",
             "file_path": LOCAL_FILES[0],
+            "path_key": "file_path",  # 默认键名测试
             "model": "deepdml/faster-whisper-large-v3-turbo-ct2"
         },
         {
-            "name": "任务 2 (视频上传转写)",
+            "name": "任务 2 (最新单键穿透 _file_path_key 上传测试)",
             "service_type": "whisper",
             "file_path": LOCAL_FILES[1],
+            "path_key": "audio",  # 💡 动态定义上传给上游的 Key 为 "audio"，测试穿透转发
             "model": "deepdml/faster-whisper-large-v3-turbo-ct2"
         }
     ]

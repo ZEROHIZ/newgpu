@@ -41,7 +41,19 @@
   2. 对其余非音频响应，在调用 `response.json()` 时增加 `try-except` 容错层，若解析失败则退回将普通文本存入 `result`，防止系统崩溃。
 - **预防**：编写任务调度或中转网关时，应充分考虑 AI 服务可能返回非 JSON（如二进制媒体流）的多样化场景，保持 Agent 的通用数据格式兼容性。
 
-### FEATURE: 极简穿透式动态文件键位设计 (_file_path_key)
-- **需求背景**：不同上游 AI 服务的 Multipart 文件上传接口所需的表单字段名（Key）各不相同（如 `file`, `audio`, `image` 等），原 Agent 只能写死为 `"file"`，极大地限制了通用性。
 - **最佳实践**：在 `payload` 载荷中引入单键穿透控制字 `_file_path_key`。客户端仅需指定该字段（如 `_file_path_key: "audio"`），Agent 就会自动从该键提取路径进行跨机器下载，并在以 Multipart 上传给上游时，将该表单文件字段名直接透传为 `"audio"`，从而在调度层用最精简的控制项，实现了完全动态的文件键位穿透中转。
+
+### BUG: Windows 终端 gbk 编码下多线程打印 Emoji 抛出 UnicodeEncodeError 崩溃
+- **现象**：在 Windows PowerShell 终端中，并发运行测试脚本时，子线程（`threading.Thread`）内执行 `print` 带有 Emoji（如 🚀, 📤 等）的日志时，抛出 `UnicodeEncodeError: 'gbk' codec can't encode character...` 致命异常导致线程中途崩溃退栈。
+- **原因**：Windows 控制台默认使用 `gbk` 编码页（Code Page 936），而 Python 的默认标准输出流（`sys.stdout`）在 `gbk` 环境下试图对含有 Unicode 特殊 Emoji 字符进行编码打印时，因该字符超出 `gbk` 字符集范围而直接报错崩溃。
+- **解决方案**：
+  在多线程脚本文件的最头部，强行将 `sys.stdout` 的输出流用全局的 `utf-8` 文本流进行重新包裹和重设（Wrapper）：
+  ```python
+  import sys
+  if sys.stdout.encoding != 'utf-8':
+      import io
+      sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+  ```
+- **预防**：编写在 Windows 环境运行、特别是输出含有 Emoji 或特殊 Unicode 日志的脚本时，务必在最头部通过重裹 `sys.stdout` 流来锁定控制台输出为 `utf-8` 编码，以保证多线程打印的绝对鲁棒性和中文不乱码。
+
 
