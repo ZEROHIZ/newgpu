@@ -53,7 +53,9 @@ class GPUAgent:
             # 2. 转发请求到上游服务 (支持 JSON 或文件上传)
             async with httpx.AsyncClient(timeout=600.0) as client:
                 payload = task_data.get("payload", {})
-                file_path = payload.get("file_path")
+                # 获取实际保存文件路径的键名，默认依然为 "file_path"
+                path_key = payload.get("_file_path_key", "file_path")
+                file_path = payload.get(path_key)
                 
                 # --- 【新增】远程文件下载逻辑 ---
                 if file_path and (file_path.startswith("http://") or file_path.startswith("https://")):
@@ -74,12 +76,12 @@ class GPUAgent:
                 
                 # 特殊处理：如果是文件任务且本地存在该文件
                 if file_path and os.path.exists(file_path):
-                    print(f"[{self.agent_id}] 📎 正在上传流到服务: {file_path}")
+                    print(f"[{self.agent_id}] 📎 正在上传流到服务: {file_path} (表单字段名: {path_key})")
                     with open(file_path, "rb") as f:
-                        # 构造 Multipart 上传
-                        files = {"file": (os.path.basename(file_path), f)}
-                        # 其他参数作为表单数据
-                        data = {k: v for k, v in payload.items() if k != "file_path"}
+                        # 构造 Multipart 上传，使用 path_key 穿透作为 Multipart 的表单键名！
+                        files = {path_key: (os.path.basename(file_path), f)}
+                        # 其他参数作为表单数据，同时剔除 path_key 和系统级控制参数 _file_path_key，保持上游纯净
+                        data = {k: v for k, v in payload.items() if k not in [path_key, "_file_path_key"]}
                         response = await client.post(service_url, files=files, data=data)
                 else:
                     # 普通 JSON 转发
@@ -87,7 +89,40 @@ class GPUAgent:
                 
                 if response.status_code == 200:
                     task_data["status"] = "completed"
-                    task_data["result"] = response.json()
+                    content_type = response.headers.get("content-type", "")
+                    
+                    if content_type.startswith("audio/"):
+                        # 如果返回的是音频二进制流，将其智能存储为本地静态媒体文件
+                        ext = ".wav"
+                        if "mpeg" in content_type or "mp3" in content_type:
+                            ext = ".mp3"
+                        elif "flac" in content_type:
+                            ext = ".flac"
+                        elif "ogg" in content_type or "opus" in content_type:
+                            ext = ".ogg"
+                        
+                        out_filename = f"tts_{task_id}{ext}"
+                        out_dir = "data/uploads"
+                        os.makedirs(out_dir, exist_ok=True)
+                        out_path = os.path.join(out_dir, out_filename)
+                        
+                        with open(out_path, "wb") as f:
+                            f.write(response.content)
+                        
+                        task_data["result"] = {
+                            "type": "audio",
+                            "filename": out_filename,
+                            "url": f"/uploads/{out_filename}",
+                            "full_path": os.path.abspath(out_path)
+                        }
+                        print(f"[{self.agent_id}] 🔊 已将合成的音频保存至本地: {out_path}")
+                    else:
+                        # 尝试解析为 JSON，解析失败时防崩溃回退为普通文本
+                        try:
+                            task_data["result"] = response.json()
+                        except Exception as e:
+                            print(f"[{self.agent_id}] ⚠️ 响应非标准 JSON, 退回文本保存: {e}")
+                            task_data["result"] = {"text": response.text}
                 else:
                     task_data["status"] = "failed"
                     error_msg = f"上游错误({response.status_code}): {response.text}"

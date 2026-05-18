@@ -31,3 +31,17 @@
 - **原因**：`worker/agent.py` 中的 `task_loop` 逻辑为空，没有从 Redis 队列中提取任务并转发。
 - **解决方案**：补全 Agent 的任务提取与 HTTP 转发逻辑，实现从 `queue:channel:*` 取出任务并请求上游 `service_url`。
 - **预防**：在分布式系统中，确保生产者（API）和消费者（Agent）的逻辑链路完整，并增加消费者的消费日志。
+
+## 2026-05-18
+### BUG: Agent 中转二进制媒体响应 (音频/图像等) 抛出 JSONDecodeError 报错
+- **现象**：当接入如 VoxCPM2 等语音合成、ComfyUI 等绘图服务作为上游时，Agent 转发请求成功（HTTP 200），但最终任务状态在调度网关中却被标记为 `failed`（失败），并伴有 `requests/json()` 解码异常。
+- **原因**：`worker/agent.py` 原代码中在获得上游 200 响应后，硬编码了 `task_data["result"] = response.json()`。由于音频流、图片等为二进制文件流，无法被解析为 JSON，导致程序崩溃抛出异常。
+- **解决方案**：
+  1. 在 `worker/agent.py` 中引入 `Content-Type` 判断。若检测到响应内容类型为 `"audio/"`（音频），自动将其落地保存至网关静态资源目录 `data/uploads/tts_{task_id}.[ext]`，并将生成的本地静态下载 URL 作为中转结果返回。
+  2. 对其余非音频响应，在调用 `response.json()` 时增加 `try-except` 容错层，若解析失败则退回将普通文本存入 `result`，防止系统崩溃。
+- **预防**：编写任务调度或中转网关时，应充分考虑 AI 服务可能返回非 JSON（如二进制媒体流）的多样化场景，保持 Agent 的通用数据格式兼容性。
+
+### FEATURE: 极简穿透式动态文件键位设计 (_file_path_key)
+- **需求背景**：不同上游 AI 服务的 Multipart 文件上传接口所需的表单字段名（Key）各不相同（如 `file`, `audio`, `image` 等），原 Agent 只能写死为 `"file"`，极大地限制了通用性。
+- **最佳实践**：在 `payload` 载荷中引入单键穿透控制字 `_file_path_key`。客户端仅需指定该字段（如 `_file_path_key: "audio"`），Agent 就会自动从该键提取路径进行跨机器下载，并在以 Multipart 上传给上游时，将该表单文件字段名直接透传为 `"audio"`，从而在调度层用最精简的控制项，实现了完全动态的文件键位穿透中转。
+
