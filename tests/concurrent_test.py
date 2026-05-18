@@ -10,8 +10,8 @@ if sys.stdout.encoding != 'utf-8':
     import io
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
 
-# GPUREDIS 调度网关地址与端口（使用 6621）
-BASE_URL = "http://127.0.0.1:6621"
+# GPUREDIS 调度网关地址
+BASE_URL = "http://192.168.110.30:6621"
 TASKS_URL = f"{BASE_URL}/api/tasks"
 UPLOAD_URL = f"{BASE_URL}/api/upload"
 
@@ -115,7 +115,7 @@ if __name__ == "__main__":
             "name": "任务 2 (最新单键穿透 _file_path_key 上传测试)",
             "service_type": "whisper",
             "file_path": LOCAL_FILES[1],
-            "path_key": "audio",  # 💡 动态定义上传给上游的 Key 为 "audio"，测试穿透转发
+            "path_key": "file",  # 💡 动态定义上传给上游的 Key 为 "file"（匹配 Whisper 服务要求），测试穿透转发
             "model": "deepdml/faster-whisper-large-v3-turbo-ct2"
         }
     ]
