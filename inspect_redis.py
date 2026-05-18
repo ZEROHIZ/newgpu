@@ -32,11 +32,18 @@ async def list_redis_data():
             val = await client.get(key)
             print(f"{safe_decode(key)}: {safe_decode(val)}")
             
+        # 获取所有任务
+        task_keys = await client.keys("task:*")
+        print(f"\n--- Tasks ({len(task_keys)}) ---")
+        for key in task_keys[:5]:
+            val = await client.get(key)
+            print(f"{safe_decode(key)}: {safe_decode(val)}")
+
         # 检查是否有其他配置
         all_keys = await client.keys("*")
         for key in all_keys:
             k = safe_decode(key)
-            if not k.startswith("gpu_device") and not k.startswith("channel"):
+            if not k.startswith("gpu_device") and not k.startswith("channel") and not k.startswith("task"):
                 try:
                     val = await client.get(key)
                     print(f"Other: {k} -> {safe_decode(val)[:100]}")

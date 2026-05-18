@@ -49,31 +49,26 @@ def run_task(task_config):
     name = task_config["name"]
     print(f"🚀 开始准备: {name}...")
     
-    # --- 核心改进：先上传 ---
-    file_path = task_config["file_path"]
-    if os.path.exists(file_path):
-        remote_url = upload_file(file_path)
-        task_config["file_path"] = remote_url
+    # 💡 直接提取需要中转的文件键位（若没有声明，则默认 fallback 到传统 "file_path"）
+    path_key = task_config.get("_file_path_key", "file_path")
+    payload_data = task_config["payload"]
     
-    # 动态把文件路径写进指定的键名中，测试单键穿透功能
-    path_key = task_config.get("path_key", "file_path")
-    payload_data = {
-        "model": task_config.get("model", "default")
-    }
-    payload_data[path_key] = task_config["file_path"]
+    # 💡 如果检测到对应键位里的文件在本地存在，直接上传，并将返回的远程 URL 写回 payload 对应的键位中
+    local_path = payload_data.get(path_key)
+    if local_path and os.path.exists(local_path):
+        remote_url = upload_file(local_path)
+        payload_data[path_key] = remote_url
     
-    # 提交任务，按照用户的提议，_file_path_key 与 payload 处于同级 (即最外层)
-    payload = {
+    # 💡 构造绝对干净的网关请求体，直接发送给服务
+    req_body = {
         "service_type": task_config["service_type"],
         "payload": payload_data
     }
-    
-    # 如果定义了 path_key，则放在 TaskRequest 的最外层作为系统控制字
-    if path_key:
-        payload["_file_path_key"] = path_key
+    if "_file_path_key" in task_config:
+        req_body["_file_path_key"] = task_config["_file_path_key"]
     
     try:
-        resp = requests.post(TASKS_URL, json=payload)
+        resp = requests.post(TASKS_URL, json=req_body)
         if resp.status_code == 200:
             task_id = resp.json()["task_id"]
             print(f"✅ {name} 提交成功, 任务ID: {task_id}")
@@ -102,21 +97,24 @@ def run_task(task_config):
 if __name__ == "__main__":
     print("=== GPUREDIS 分布式并发与文件上传穿透测试工具 ===")
     
-    # 定义任务：同时测试传统格式与最新外层单键穿透上传格式
+    # 定义任务：直观呈现发给网关的 payload，没有任何套娃映射！
     tasks = [
         {
             "name": "任务 1 (默认没有 _file_path_key，回退模式测试)",
             "service_type": "whisper",
-            "file_path": LOCAL_FILES[0],
-            "path_key": "file_path",  # 默认键名测试
-            "model": "deepdml/faster-whisper-large-v3-turbo-ct2"
+            "payload": {
+                "file_path": LOCAL_FILES[0],
+                "model": "deepdml/faster-whisper-large-v3-turbo-ct2"
+            }
         },
         {
             "name": "任务 2 (最外层 _file_path_key='file' 完美穿透测试)",
             "service_type": "whisper",
-            "file_path": LOCAL_FILES[1],
-            "path_key": "file",  # 💡 动态定义上传给上游的 Key 为 "file" 以完美契合 Whisper 上游！
-            "model": "deepdml/faster-whisper-large-v3-turbo-ct2"
+            "_file_path_key": "file",  # 💡 只需要声明哪一个是文件键位！
+            "payload": {
+                "file": LOCAL_FILES[1],  # 💡 对应的键位直接写 file 即可！
+                "model": "deepdml/faster-whisper-large-v3-turbo-ct2"
+            }
         }
     ]
     
